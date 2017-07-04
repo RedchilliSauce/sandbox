@@ -8,7 +8,19 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/RedchilliSauce/sandbox/sandbox/golang/echo/cowsnbulls/utils"
 	"github.com/labstack/echo"
+)
+
+type Method int
+
+const (
+	WordGameDictionary Method = iota
+	OSDict
+)
+
+const (
+	OSDictPath string = `/usr/share/dict/words`
 )
 
 //Game ...
@@ -25,6 +37,8 @@ type GuessRes struct {
 	Bulls int64 `json:"bulls"`
 }
 
+var dictionaryWords map[string]int
+
 //Games ...
 var Games map[string]Game
 
@@ -37,6 +51,8 @@ func main() {
 	f, _ := os.Create("/var/log/forecast.log")
 	defer f.Close()
 	log.SetOutput(f)
+
+	dictionaryWords = GetValidWords(4, WordGameDictionary)
 
 	Games = make(map[string]Game)
 	e := echo.New()
@@ -164,11 +180,15 @@ func getguessres(c echo.Context) error {
 	key := generateKey(p1, p2)
 
 	game, exists := Games[key]
+	isValidWord := true
 
-	if exists {
+	if len(dictionaryWords) > 0 {
+		_, isValidWord = dictionaryWords[guess]
+	}
+	if exists && isValidWord {
 		res := getGuessRes(game.Word, guess)
 		if res == nil {
-			return c.String(http.StatusBadRequest, "Incorrect input")
+			return c.String(http.StatusBadRequest, "Incorrect input. Remember, guesses should have non-repeating alphabets only and be of same length as the word to be guessed")
 		}
 		if res.Bulls == 4 && res.Cows == 0 {
 			delete(Games, key)
@@ -227,6 +247,22 @@ func creategame(c echo.Context) error {
     </html>`)
 	}
 
+	isValidWord := true
+
+	if len(dictionaryWords) > 0 {
+		_, isValidWord = dictionaryWords[word]
+	}
+
+	if !VerifyWord(word) || !isValidWord {
+		return c.HTML(http.StatusBadRequest, `<html>
+    <body>
+        Word must from the English dictionary and cannot have repeating alphabets
+        <br><br>
+        <a href="/">Back to Main Menu</a>
+    </body>
+    </html>`)
+	}
+
 	Games[key] = newGame
 
 	html := `<html>
@@ -239,8 +275,8 @@ func creategame(c echo.Context) error {
 	return c.HTML(http.StatusOK, html)
 }
 
-func getGuessRes(expected string, actual string) *GuessRes {
-	if len(expected) != len(actual) {
+func getGuessRes(expected string, guess string) *GuessRes {
+	if len(expected) != len(guess) || !VerifyWord(guess) {
 		return nil
 	}
 
@@ -248,11 +284,11 @@ func getGuessRes(expected string, actual string) *GuessRes {
 	bulls := int64(0)
 
 	expected = strings.ToUpper(expected)
-	actual = strings.ToUpper(actual)
+	guess = strings.ToUpper(guess)
 
 	bullTracker := make(map[int]int)
 	for i := 0; i < len(expected); i++ {
-		if expected[i] == actual[i] {
+		if expected[i] == guess[i] {
 			bulls++
 			bullTracker[i] = 1
 		}
@@ -262,10 +298,10 @@ func getGuessRes(expected string, actual string) *GuessRes {
 		for i := 0; i < len(expected); i++ {
 			_, iexists := bullTracker[i]
 			if !iexists {
-				for j := 0; j < len(actual); j++ {
+				for j := 0; j < len(guess); j++ {
 					_, jexists := bullTracker[j]
 					if !jexists {
-						if expected[i] == actual[j] {
+						if expected[i] == guess[j] {
 							cows++
 							break
 						}
@@ -278,9 +314,22 @@ func getGuessRes(expected string, actual string) *GuessRes {
 	return res
 }
 
-//VerifyWord TODO
+//VerifyWord ....
 func VerifyWord(word string) bool {
-	return true
+	word = strings.ToLower(word)
+	var tracker [26]int
+	valid := true
+	for i := 0; i < len(word); i++ {
+		if tracker[word[i]-'a'] > 0 {
+			valid = false
+			break
+		} else if word[i]-'a' > 25 || word[i]-'a' < 0 {
+			valid = false
+			break
+		}
+		tracker[word[i]-'a']++
+	}
+	return valid
 }
 
 func getResultOutputAppender(game Game) string {
@@ -313,4 +362,14 @@ td, th {
 	`
 
 	return html
+}
+
+//GetValidWords ... Gets all words from /usr/share/dict/words
+func GetValidWords(wordLen int, method Method) map[string]int {
+	if method == OSDict {
+		return utils.GetWordsFromFile(OSDictPath, wordLen)
+	} else {
+		//Not specified or WordGameDictionary
+		return utils.GetWordsFromWordGameDict(wordLen)
+	}
 }
