@@ -181,7 +181,7 @@ func getguessres(c echo.Context) error {
 
 	game, exists := Games[key]
 	isValidWord := true
-
+	guess = strings.TrimSpace(strings.ToLower(guess))
 	if len(dictionaryWords) > 0 {
 		_, isValidWord = dictionaryWords[guess]
 	}
@@ -248,7 +248,7 @@ func creategame(c echo.Context) error {
 	}
 
 	isValidWord := true
-
+	word = strings.TrimSpace(strings.ToLower(word))
 	if len(dictionaryWords) > 0 {
 		_, isValidWord = dictionaryWords[word]
 	}
